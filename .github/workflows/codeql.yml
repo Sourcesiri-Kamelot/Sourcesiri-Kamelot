@@ -1,0 +1,87 @@
+# Prometheus configuration
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: 'ml_training'
+    static_configs:
+      - targets: ['localhost:8000']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '(gpu_.*|memory_.*|training_.*)'
+        action: keep
+
+  - job_name: 'model_serving'
+    static_configs:
+      - targets: ['localhost:8001']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '(model_.*|inference_.*|latency_.*)'
+        action: keep
+
+  - job_name: 'system_metrics'
+    static_configs:
+      - targets: ['localhost:9100']
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+# Alert rules
+groups:
+  - name: ml_alerts
+    rules:
+      - alert: HighGPUUsage
+        expr: gpu_memory_used / gpu_memory_total > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High GPU memory usage
+
+      - alert: ModelAccuracyDrop
+        expr: model_accuracy < 0.90
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Model accuracy below threshold
+
+      - alert: HighLatency
+        expr: avg_over_time(inference_latency_seconds[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High model inference latency
+
+# Grafana dashboards
+dashboards:
+  - name: "ML Training Overview"
+    panels:
+      - title: "GPU Usage"
+        type: "graph"
+        metrics: ["gpu_memory_used", "gpu_memory_total"]
+      - title: "Training Progress"
+        type: "graph"
+        metrics: ["training_loss", "training_accuracy"]
+      - title: "System Resources"
+        type: "graph"
+        metrics: ["cpu_usage", "memory_usage"]
+
+  - name: "Model Performance"
+    panels:
+      - title: "Inference Latency"
+        type: "graph"
+        metrics: ["inference_latency_seconds"]
+      - title: "Model Accuracy"
+        type: "gauge"
+        metrics: ["model_accuracy"]
+      - title: "Requests per Second"
+        type: "graph"
+        metrics: ["model_requests_total"]
